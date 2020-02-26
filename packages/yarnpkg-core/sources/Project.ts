@@ -1134,19 +1134,17 @@ export class Project {
     // the rebuilds much more predictable than before, and to give us the tools
     // later to improve this further by explaining *why* a rebuild happened.
 
+    const storedBuildHashes = new Map<string, string>();
     const getBuildHash = (locator: Locator, buildLocations: PortablePath[]) => {
-      const hash = createHash(`sha512`);
-      hash.update(globalHash);
+      const traverse = (locatorHash: LocatorHash) => {
+        if (storedBuildHashes.has(locatorHash))
+          return storedBuildHashes.get(locatorHash)!;
 
-      const traverse = (locatorHash: LocatorHash, seenPackages: Set<string> = new Set()) => {
-        hash.update(locatorHash);
-
-        if (!seenPackages.has(locatorHash))
-          seenPackages.add(locatorHash);
-        else
-          return;
+        const hash = createHash(`sha512`);
+        hash.update(globalHash);
 
         const pkg = this.storedPackages.get(locatorHash);
+
         if (!pkg)
           throw new Error(`Assertion failed: The package should have been registered`);
 
@@ -1159,11 +1157,17 @@ export class Project {
           if (typeof buildHash !== `undefined`)
             hash.update(buildHash);
 
-          traverse(resolution, new Set(seenPackages));
+          hash.update(traverse(resolution));
         }
+
+        const hashDigest = hash.digest(`hex`);
+
+        storedBuildHashes.set(locatorHash, hashDigest);
+        return hashDigest;
       };
 
-      traverse(locator.locatorHash);
+      const hash = createHash(`sha512`);
+      hash.update(traverse(locator.locatorHash));
 
       buildLocations.forEach(location => hash.update(location));
 
